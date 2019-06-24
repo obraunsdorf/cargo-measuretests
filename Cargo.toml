@@ -1,0 +1,22 @@
+[package]
+name = "cargo-measuretests"
+version = "0.1.0"
+authors = ["Oliver Braunsdorf <oliver.braunsdorf@aisec.fraunhofer.de>"]
+edition = "2018"
+
+[[bin]]
+name = "cargo-measuretests"
+path = "src/main.rs"
+
+[lib]
+name = "cargo_measuretests"
+path = "src/lib.rs"
+
+[[test]]
+name = "integration"
+path = "tests/mod.rs"
+
+[dependencies]
+cargo = "0.36.0"
+failure = "0.1.5"
+clap = "2.33.0"
