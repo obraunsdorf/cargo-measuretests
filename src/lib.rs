@@ -6,6 +6,9 @@ use cargo::util::command_prelude::*;
 use cargo::core::shell::Verbosity;
 use cargo::core::shell::Shell;
 
+use std::fs::File;
+use std::io::prelude::*;
+
 pub fn exec(config: &mut Config, args: &ArgMatches<'_>) -> CliResult {
     let ws = args.workspace(config)?;
 
@@ -143,6 +146,8 @@ fn run_unit_tests(
 
     let mut errors = Vec::new();
 
+    let mut result_file = File::create("measurement-results").unwrap();
+
     for &(ref pkg, ref target, ref exe) in &compilation.tests {
         let kind = target.kind();
         let test = target.name().to_string();
@@ -159,12 +164,11 @@ fn run_unit_tests(
             .shell()
             .verbose(|shell| shell.status("Running", &cmd))?;
 
-        println!("starting time measure");
         let now = std::time::Instant::now();
         let result = cmd.exec();
-        println!("time: {}", now.elapsed().as_micros());
+        let exec_time = now.elapsed().as_micros();
 
-
+        let mut result_string = "failed";
         match result {
             Err(e) => {
                 let e = e.downcast::<ProcessError>()?;
@@ -173,8 +177,11 @@ fn run_unit_tests(
                     break;
                 }
             }
-            Ok(()) => {}
+            Ok(()) => { result_string = "ok";}
         }
+
+        let file_output = format!("(result: {}, time {}) for execution of {}:\n", result_string, exec_time, exe_display);
+        result_file.write(file_output.as_bytes());
     }
 
     if errors.len() == 1 {
