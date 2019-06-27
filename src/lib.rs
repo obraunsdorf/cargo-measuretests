@@ -62,7 +62,13 @@ pub fn exec(config: &mut Config, args: &ArgMatches<'_>) -> CliResult {
         compile_opts,
     };
 
-    let err = run_tests(&ws, &ops, &test_args)?;
+
+    let warmup_string = args.value_of("warumup").unwrap();
+    let warmup_secs: u64 = warmup_string.parse().unwrap();
+    let runs_string = args.value_of("runs").unwrap();
+    let runs: u64 = runs_string.parse().unwrap();
+
+    let err = run_tests(&ws, &ops, &test_args, warmup_secs, runs)?;
     match err {
         None => Ok(()),
         Some(err) => Err(match err.exit.as_ref().and_then(|e| e.code()) {
@@ -82,13 +88,19 @@ pub fn run_tests(
     ws: &Workspace<'_>,
     options: &TestOptions<'_>,
     test_args: &[&str],
+    warmup_secs: u64,
+    runs: u64,
 ) -> CargoResult<Option<CargoTestError>> {
     let compilation = compile_tests(ws, options)?;
 
     if options.no_run {
         return Ok(None);
     }
-    let (test, mut errors) = run_unit_tests(options, test_args, &compilation)?;
+    let (test, mut errors) = run_unit_tests(options,
+                                            test_args,
+                                            &compilation,
+                                            warmup_secs,
+                                            runs)?;
 
     // If we have an error and want to fail fast, then return.
     if !errors.is_empty() && !options.no_fail_fast {
@@ -140,6 +152,8 @@ fn run_unit_tests(
     options: &TestOptions<'_>,
     test_args: &[&str],
     compilation: &Compilation<'_>,
+    warmup_secs: u64,
+    runs: u64,
 ) -> CargoResult<(Test, Vec<ProcessError>)> {
     let config = options.compile_opts.config;
     let cwd = options.compile_opts.config.cwd();
@@ -164,9 +178,19 @@ fn run_unit_tests(
             .shell()
             .verbose(|shell| shell.status("Running", &cmd))?;
 
-        let now = std::time::Instant::now();
-        let result = cmd.exec();
-        let exec_time = now.elapsed().as_micros();
+        let t0 = std::time::Instant::now();
+        let mut run_count: u64 = 1;
+        let (exec_time, result) = loop {
+            let now = std::time::Instant::now();
+            let result = cmd.exec();
+            let time = now.elapsed().as_micros();
+            if t0.elapsed() < std::time::Duration::from_secs(warmup_secs) {
+                run_count = run_count+1;
+                if run_count >= runs {
+                    break (time, result)
+                }
+            }
+        };
 
         let mut result_string = "failed";
         match result {
@@ -177,7 +201,7 @@ fn run_unit_tests(
                     break;
                 }
             }
-            Ok(()) => { result_string = "ok";}
+            Ok(()) => { result_string = "ok"; }
         }
 
         let file_output = format!("(result: {}, time {}) for execution of {}:\n", result_string, exec_time, exe_display);

@@ -47,6 +47,22 @@ fn main() {
                 )
                     .short("q"),
             )
+            .arg(
+                opt(
+                    "runs",
+                    "Specifies the number of times how often tests will be run",
+                )
+                    .default_value("32")
+                    .short("r"),
+            )
+            .arg(
+                opt(
+                    "warmup",
+                    "Specifies time in seconds to warmup tests",
+                )
+                    .default_value("3")
+                    .short("w"),
+            )
             .arg_targets_all(
                 "Test only this package's library unit tests",
                 "Test only the specified binary",
@@ -113,7 +129,6 @@ To get the list of all options available for the test binaries use this:
         Some(x) => x,
         None => &matches
     };
-
 
     cargo_measuretests::exec(&mut config, &args);
 }
