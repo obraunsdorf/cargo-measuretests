@@ -63,9 +63,9 @@ pub fn exec(config: &mut Config, args: &ArgMatches<'_>) -> CliResult {
     };
 
 
-    let warmup_string = args.value_of("warumup").unwrap();
+    let warmup_string = args.value_of("warumup").unwrap_or("3");
     let warmup_secs: u64 = warmup_string.parse().unwrap();
-    let runs_string = args.value_of("runs").unwrap();
+    let runs_string = args.value_of("runs").unwrap_or("1");
     let runs: u64 = runs_string.parse().unwrap();
 
     let err = run_tests(&ws, &ops, &test_args, warmup_secs, runs)?;
@@ -180,32 +180,34 @@ fn run_unit_tests(
 
         let t0 = std::time::Instant::now();
         let mut run_count: u64 = 1;
-        let (exec_time, result) = loop {
+
+        /*
+        // warmup
+        while t0.elapsed().as_secs() < warmup_secs {
+            let result = cmd.exec();
+        }
+        */
+
+        for run_count in 0..runs {
             let now = std::time::Instant::now();
             let result = cmd.exec();
-            let time = now.elapsed().as_micros();
-            if t0.elapsed() < std::time::Duration::from_secs(warmup_secs) {
-                run_count = run_count+1;
-                if run_count >= runs {
-                    break (time, result)
-                }
-            }
-        };
+            let exec_time = now.elapsed().as_micros();
 
-        let mut result_string = "failed";
-        match result {
-            Err(e) => {
-                let e = e.downcast::<ProcessError>()?;
-                errors.push((kind.clone(), test.clone(), pkg.name().to_string(), e));
-                if !options.no_fail_fast {
-                    break;
+            let mut result_string = "failed";
+            match result {
+                Err(e) => {
+                    let e = e.downcast::<ProcessError>()?;
+                    errors.push((kind.clone(), test.clone(), pkg.name().to_string(), e));
+                    if !options.no_fail_fast {
+                        break;
+                    }
                 }
+                Ok(()) => { result_string = "ok"; }
             }
-            Ok(()) => { result_string = "ok"; }
+
+            let file_output = format!("test: {}, run: {}, result: {}, time: {}\n", exe_display, run_count, result_string, exec_time);
+            result_file.write(file_output.as_bytes());
         }
-
-        let file_output = format!("(result: {}, time {}) for execution of {}:\n", result_string, exec_time, exe_display);
-        result_file.write(file_output.as_bytes());
     }
 
     if errors.len() == 1 {
